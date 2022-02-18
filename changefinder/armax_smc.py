@@ -15,7 +15,7 @@ class NormalModel(object):
 
 
 class ARMAXusingSMC(object):
-    r"""ARMAX モデル．パラメータは SMC 法により求める．
+    """ARMAX モデル．パラメータは SMC 法により求める．
 
     $$
     y_t
