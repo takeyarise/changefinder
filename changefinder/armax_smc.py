@@ -6,7 +6,7 @@ class NormalModel(object):
     def __init__(self):
         pass
 
-    def predict(self, mu, sigma, size):
+    def predict(self, mu, sigma, size=None):
         return np.random.normal(mu, sigma, size=size)
 
     def likelihood(self, obs, pred, sigma):
@@ -60,8 +60,9 @@ class ARMAXusingSMC(object):
         self.__sigma = self.__initial_param(0.0, 1.0)
         self.__sigma['values'] = np.random.gamma(1.0, 1.0, size=(n_particle,))
 
-        self.__obs = list()  # 先頭から順に 1, 2,..., t
-        self.__eps = list()  # となりインデックスと逆順になることに注意
+        # とりま 0 で仮埋め
+        self.__obs = [0] * p  # 先頭から順に 1, 2,..., t
+        self.__eps = [0] * q  # となりインデックスと逆順になることに注意
 
         self.__model = NormalModel()
 
@@ -101,11 +102,20 @@ class ARMAXusingSMC(object):
         mu = self.__term(self.__mu, p_name == 'mu')
         pred += mu
         for i in range(self.__p):
-            pred += self.__term(self.__alpha[i], (p_name == 'alpha') and (i == p_idx)) * (self.__obs[i] - mu)
+            pred += self.__term(
+                self.__alpha[i],
+                (p_name == 'alpha') and (i == p_idx)
+            ) * (self.__obs[i] - mu)
         for i in range(self.__q):
-            pred += self.__term(self.__beta[i], (p_name == 'beta') and (i == p_idx)) * self.__eps[i]
+            pred += self.__term(
+                self.__beta[i],
+                (p_name == 'beta') and (i == p_idx)
+            ) * self.__eps[i]
         for i in range(self.__M):
-            pred += self.__term(self.__gamma[i], (p_name == 'gamma') and (i == p_idx)) * exog[i]
+            pred += self.__term(
+                self.__gamma[i],
+                (p_name == 'gamma') and (i == p_idx)
+            ) * exog[i]
         pred += eps
         return pred
 
@@ -177,25 +187,37 @@ class ARMAXusingSMC(object):
         # 重みの更新
         self.__mu['weights'] = np.exp(np.log(self.__mu['weights']) + np.log(mu_w))
         for i in range(self.__p):
-            self.__alpha[i]['weights'] = np.exp(np.log(self.__alpha[i]['weights']) + np.log(alpha_w[i]))
+            self.__alpha[i]['weights'] = np.exp(
+                np.log(self.__alpha[i]['weights']) + np.log(alpha_w[i])
+            )
         for i in range(self.__q):
-            self.__beta[i]['weights'] = np.exp(np.log(self.__beta[i]['weights']) + np.log(beta_w[i]))
+            self.__beta[i]['weights'] = np.exp(
+                np.log(self.__beta[i]['weights']) + np.log(beta_w[i])
+            )
         for i in range(self.__M):
-            self.__gamma[i]['weights'] = np.exp(np.log(self.__gamma[i]['weights']) + np.log(gamma_w[i]))
+            self.__gamma[i]['weights'] = np.exp(
+                np.log(self.__gamma[i]['weights']) + np.log(gamma_w[i])
+            )
         self.__sigma['weights'] = np.exp(np.log(self.__sigma['weights']) + np.log(sigma_w))
         # リサンプリング
         # （論文によると w が一定以上でリサンプリングした方がいいらしい）
         self.__mu['values'] = self.__resampling(self.__mu['values'], self.__mu['weights'])
+        self.__mu['weights'] = np.ones_like(self.__mu['weights'])
         self.__sigma['values'] = self.__resampling(self.__sigma['values'], self.__sigma['weights'])
+        self.__sigma['weights'] = np.ones_like(self.__sigma['weights'])
         for i in range(self.__p):
             self.__alpha[i]['values'] = self.__resampling(self.__alpha[i]['values'], self.__alpha[i]['weights'])
+            self.__alpha[i]['weights'] = np.ones_like(self.__alpha[i]['weights'])
         for i in range(self.__q):
             self.__beta[i]['values'] = self.__resampling(self.__beta[i]['values'], self.__beta[i]['weights'])
+            self.__beta[i]['weights'] = np.ones_like(self.__beta[i]['weights'])
         for i in range(self.__M):
             self.__gamma[i]['values'] = self.__resampling(self.__gamma[i]['values'], self.__gamma[i]['weights'])
+            self.__gamma[i]['weights'] = np.ones_like(self.__gamma[i]['weights'])
         # モデルパラメータの最高神
         self.__mu['values'] += self.__model.predict(0, self.__mu['sigma'], (self.__n_particle,))
         self.__sigma['values'] += self.__model.predict(0, self.__sigma['sigma'], (self.__n_particle,))
+        self.__sigma['values'] = np.abs(self.__sigma['values'])  # NOTE: \sigma > 0 より
         for i in range(self.__p):
             self.__alpha[i]['values'] += self.__model.predict(0, self.__alpha[i]['sigma'], (self.__n_particle,))
         for i in range(self.__q):

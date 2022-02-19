@@ -1,7 +1,7 @@
 import statsmodels.api as sm
 import numpy as np
 import scipy as sp
-from sdar import SDAR_1Dim
+from .sdar import SDAR_1Dim
 
 
 class _ChangeFinderAbstract(object):

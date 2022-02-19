@@ -1,8 +1,8 @@
-from change_finder import (
+from .change_finder import (
     ChangeFinder,
     ChangeFinderARIMA,
 )
-from armax_smc import ARMAXusingSMC
+from .armax_smc import ARMAXusingSMC
 
 __all__ = [
     'ChangeFinder',

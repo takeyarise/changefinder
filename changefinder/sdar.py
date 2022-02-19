@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from levinson_durbin import LevinsonDurbin
+from .levinson_durbin import LevinsonDurbin
 
 
 class SDAR_1Dim(object):
