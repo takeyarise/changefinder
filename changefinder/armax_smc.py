@@ -116,7 +116,11 @@ class ARMAXusingSMC(object):
                 self.__gamma[i],
                 (p_name == 'gamma') and (i == p_idx)
             ) * exog[i]
-        pred += eps
+        if (type(pred) is np.ndarray) and (pred.shape[0] == 1) and (eps.shape[0] > 1):
+            eps += pred
+            pred = eps
+        else:
+            pred += eps
         return pred
 
     def predict(self, exog=None, eps=None):
@@ -199,22 +203,37 @@ class ARMAXusingSMC(object):
                 np.log(self.__gamma[i]['weights']) + np.log(gamma_w[i])
             )
         self.__sigma['weights'] = np.exp(np.log(self.__sigma['weights']) + np.log(sigma_w))
+        # 重みの確認のため
+        ret = dict()
+        ret['mu'] = np.sum(self.__mu['weights'])
+        ret['sigma'] = np.sum(self.__sigma['weights'])
+        for i in range(self.__p):
+            ret['alpha_{}'.format(i)] = np.sum(self.__alpha[i]['weights'])
+        for i in range(self.__q):
+            ret['beta_{}'.format(i)] = np.sum(self.__beta[i]['weights'])
+        for i in range(self.__M):
+            ret['gamma_{}'.format(i)] = np.sum(self.__gamma[i]['weights'])
         # リサンプリング
         # （論文によると w が一定以上でリサンプリングした方がいいらしい）
-        self.__mu['values'] = self.__resampling(self.__mu['values'], self.__mu['weights'])
-        self.__mu['weights'] = np.ones_like(self.__mu['weights'])
-        self.__sigma['values'] = self.__resampling(self.__sigma['values'], self.__sigma['weights'])
-        self.__sigma['weights'] = np.ones_like(self.__sigma['weights'])
+        if ret['mu'] > 2:
+            self.__mu['values'] = self.__resampling(self.__mu['values'], self.__mu['weights'])
+            self.__mu['weights'] = np.ones_like(self.__mu['weights'])
+        if ret['sigma'] > 2:
+            self.__sigma['values'] = self.__resampling(self.__sigma['values'], self.__sigma['weights'])
+            self.__sigma['weights'] = np.ones_like(self.__sigma['weights'])
         for i in range(self.__p):
-            self.__alpha[i]['values'] = self.__resampling(self.__alpha[i]['values'], self.__alpha[i]['weights'])
-            self.__alpha[i]['weights'] = np.ones_like(self.__alpha[i]['weights'])
+            if ret['alpha_{}'.format(i)] > 2:
+                self.__alpha[i]['values'] = self.__resampling(self.__alpha[i]['values'], self.__alpha[i]['weights'])
+                self.__alpha[i]['weights'] = np.ones_like(self.__alpha[i]['weights'])
         for i in range(self.__q):
-            self.__beta[i]['values'] = self.__resampling(self.__beta[i]['values'], self.__beta[i]['weights'])
-            self.__beta[i]['weights'] = np.ones_like(self.__beta[i]['weights'])
+            if ret['beta_{}'.format(i)] > 2:
+                self.__beta[i]['values'] = self.__resampling(self.__beta[i]['values'], self.__beta[i]['weights'])
+                self.__beta[i]['weights'] = np.ones_like(self.__beta[i]['weights'])
         for i in range(self.__M):
-            self.__gamma[i]['values'] = self.__resampling(self.__gamma[i]['values'], self.__gamma[i]['weights'])
-            self.__gamma[i]['weights'] = np.ones_like(self.__gamma[i]['weights'])
-        # モデルパラメータの最高神
+            if ret['gamma_{}'.format(i)] > 2:
+                self.__gamma[i]['values'] = self.__resampling(self.__gamma[i]['values'], self.__gamma[i]['weights'])
+                self.__gamma[i]['weights'] = np.ones_like(self.__gamma[i]['weights'])
+        # モデルパラメータの再更新
         self.__mu['values'] += self.__model.predict(0, self.__mu['sigma'], (self.__n_particle,))
         self.__sigma['values'] += self.__model.predict(0, self.__sigma['sigma'], (self.__n_particle,))
         self.__sigma['values'] = np.abs(self.__sigma['values'])  # NOTE: \sigma > 0 より
@@ -224,6 +243,8 @@ class ARMAXusingSMC(object):
             self.__beta[i]['values'] += self.__model.predict(0, self.__beta[i]['sigma'], (self.__n_particle,))
         for i in range(self.__M):
             self.__gamma[i]['values'] += self.__model.predict(0, self.__gamma[i]['sigma'], (self.__n_particle,))
+
+        return ret
 
     def update(self, obs, exog=None):
         """update.
@@ -244,12 +265,12 @@ class ARMAXusingSMC(object):
         )
         ys_hat = self.__predict_w_params(exog)
 
-        self.__param_update(obs, eps, exog=exog)
+        weights = self.__param_update(obs, eps, exog=exog)
         self.__push_obs(obs)
         self.__push_eps(eps)
 
         weight = self.__model.likelihood(obs, ys_hat, self.__sigma['values'])
-        return - np.log(np.sum(weight))
+        return - np.log(np.sum(weight)), weights
 
 
 class ChangeFinderARMAXusingSMC(object):
