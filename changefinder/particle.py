@@ -20,15 +20,30 @@ class ObservModel(object):
 
 
 class Particle(object):
-    def __init__(self, num_particle, n_dims, trans, observ, initial=None):
+    def __init__(self, num_particle, n_dims, transition_func, likelihood_func, initial=None):
+        """
+
+        Parameters
+        ----------
+        num_particle: int, the number of particles.
+        n_dim: int, dimentions.
+        transition_func: callable[p_t, (p_{t-1})]
+        likelihood_func: callable[weight, (predictions, observation)]
+        """
         self.num_particle = num_particle
-        self.trans = trans
-        self.observ = observ
+        self.transition_func = transition_func
+        self.likelihood_func = likelihood_func
 
         if initial is None:
-            self.particles = np.zeros(num_particle, n_dims)
+            self.particles = np.zeros((num_particle, n_dims))
         else:
             self.particles = initial
+
+        self.average = np.average(self.particles)
+        self.__next = {'param': None, 'weight': None}
+
+    def expected(self):
+        return self.average
 
     def resampling(self, predictions, weights):
         norm_weights = np.cumsum(weights) / np.sum(weights)
@@ -41,7 +56,16 @@ class Particle(object):
         )
 
     def update(self, obs):
-        """リサンプリングは行わない"""
-        preds = self.trans.predict(self.particles)
-        weights = self.observ.likelihood(preds, obs)
-        return preds, weights#, np.average(preds, weights=weights, axis=0)
+        preds, weights = self.calc_next_particle(obs)
+        self.resampling(preds, weights)
+        self.average = np.average(preds, weights=weights, axis=0)
+        return preds, weights
+
+    def calc_next_particle(self, obs):
+        preds = self.transition_func(self.particles)
+        weights = self.likelihood_func(preds, obs)
+        self.__next = {
+            'param': preds,
+            'weight': weights,
+        }
+        return preds, weights
